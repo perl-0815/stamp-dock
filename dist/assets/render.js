@@ -96,6 +96,44 @@ function caption(ctx,config,y,maxWidth=300,color=config.color){
   ctx.fillStyle=color;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(config.subtext,0,y);
 }
 
+
+// Fit the visible ink, not just the font's advance width. The badge and burst
+// reserve separate rectangular regions that sit wholly inside their outlines.
+// Alphabetic baselines let asymmetric ascenders/descenders stay centered too.
+function fittedText(ctx, config, { width, height, y, size, fallback = 'sans' }) {
+  let fontSize = size * config.textScale;
+  let lines = [], metrics = [], ascent = 0, descent = 0, pitch = 0, inkHeight = 0;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  for (let attempt = 0; attempt < 80; attempt++) {
+    ctx.font = fontSpec(config, fontSize, fallback);
+    lines = !config.text.includes('\n') && Array.from(config.text).length <= 14
+      ? [config.text] : wrap(ctx, config.text, width);
+    metrics = lines.map(line => ctx.measureText(line));
+    ascent = Math.max(fontSize * .45, ...metrics.map(m => m.actualBoundingBoxAscent || 0));
+    descent = Math.max(fontSize * .08, ...metrics.map(m => m.actualBoundingBoxDescent || 0));
+    pitch = Math.max(fontSize * 1.18, ascent + descent + fontSize * .15);
+    inkHeight = ascent + descent + (lines.length - 1) * pitch;
+    const inkWidth = Math.max(0, ...metrics.map(m => Math.max(m.width, m.actualBoundingBoxLeft + m.actualBoundingBoxRight)));
+    const ratio = Math.min(width / Math.max(1, inkWidth), height / Math.max(1, inkHeight));
+    if (ratio >= 1 || fontSize <= .5) break;
+    // Rewrap after small steps: a large height-based jump would shrink a long
+    // paragraph too far before it can settle into fewer, more legible lines.
+    fontSize = Math.max(.5, fontSize * .94);
+  }
+  const baseline = y - inkHeight / 2 + ascent;
+  lines.forEach((line, i) => {
+    const m = metrics[i];
+    const centeredInk = (m.actualBoundingBoxLeft - m.actualBoundingBoxRight) / 2;
+    ctx.fillText(line, centeredInk, baseline + i * pitch);
+  });
+}
+function fittedCaption(ctx, config, { width, height, y }) {
+  if (!config.subtext) return;
+  fittedText(ctx, { ...config, text: config.subtext, font: 'rounded', textScale: 1 },
+    { width, height, y, size: 17, fallback: 'rounded' });
+}
+
 function drawOutline(ctx,c){
   ctx.lineWidth=7;roundedRect(ctx,-204,-115,408,230,14);ctx.stroke();
   ctx.lineWidth=1.6;roundedRect(ctx,-192,-103,384,206,8);ctx.stroke();
@@ -110,16 +148,39 @@ function drawSolid(ctx,c){
   caption(ctx,c,67,325,'#ffffff');
 }
 function drawBadge(ctx,c){
-  // A ribbon seal with a clear center, not an image of a UI badge.
-  ctx.save();ctx.globalAlpha=.24;
-  ctx.beginPath();ctx.moveTo(-130,85);ctx.lineTo(-149,172);ctx.lineTo(-100,150);ctx.lineTo(-57,178);ctx.lineTo(-43,95);ctx.closePath();ctx.fill();
-  ctx.beginPath();ctx.moveTo(130,85);ctx.lineTo(149,172);ctx.lineTo(100,150);ctx.lineTo(57,178);ctx.lineTo(43,95);ctx.closePath();ctx.fill();ctx.restore();
-  ctx.lineWidth=5;ctx.beginPath();for(let i=0;i<48;i++){const a=i*Math.PI/24-Math.PI/2,r=i%2?155:163;const x=Math.cos(a)*r,y=Math.sin(a)*r*.91;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();ctx.stroke();
-  ctx.lineWidth=1.5;ctx.beginPath();ctx.ellipse(0,0,144,130,0,0,Math.PI*2);ctx.stroke();
-  check(ctx,0,-78,27);
-  textBlock(ctx,c,{width:270,height:105,y:4,size:59});
-  caption(ctx,c,84,215);star(ctx,-107,72,7);star(ctx,107,72,7);
+  const centerY = -17;
+  // Pennants begin outside the seal, so transparent faces never reveal ribbon
+  // roots behind either text region. Mirroring keeps the two tails deliberate.
+  ctx.save();
+  ctx.lineWidth = 2.5;
+  for (const side of [-1, 1]) {
+    const points = [[52,141],[85,127],[124,199],[95,191],[82,214]];
+    ctx.beginPath();
+    points.forEach(([x,y],i) => i ? ctx.lineTo(side*x,y) : ctx.moveTo(side*x,y));
+    ctx.closePath();
+    ctx.globalAlpha = .14; ctx.fill();
+    ctx.globalAlpha = .7; ctx.stroke();
+  }
+  ctx.restore();
+  // A true circular, 24-point seal replaces the compressed irregular ellipse.
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  for (let i = 0; i < 48; i++) {
+    const angle = i * Math.PI / 24 - Math.PI / 2;
+    const radius = i % 2 ? 153 : 161;
+    const x = Math.cos(angle) * radius, y = centerY + Math.sin(angle) * radius;
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  }
+  ctx.closePath(); ctx.stroke();
+  ctx.lineWidth = 1.5; circle(ctx,0,centerY,141);
+  check(ctx,0,-98,23);
+  star(ctx,-70,-99,6); star(ctx,70,-99,6);
+  // These ink boxes fit inside the inner ring with clearance at every corner.
+  // Main: x ±114, y -59..45. Caption: x ±84, y 69..87.
+  fittedText(ctx,c,{width:228,height:104,y:-7,size:63});
+  fittedCaption(ctx,c,{width:168,height:18,y:78});
 }
+
 function drawTerminal(ctx,c){
   roundedRect(ctx,-202,-119,404,238,17);ctx.fill();
   ctx.save();ctx.fillStyle='#ffffff';ctx.globalAlpha=.6;for(let x=-174;x<=-138;x+=18)circle(ctx,x,-94,4,true);ctx.restore();
@@ -151,13 +212,26 @@ function drawCircle(ctx,c){
   star(ctx,-57,-110,8);star(ctx,57,-110,8);
 }
 function drawImpact(ctx,c){
-  ctx.save();ctx.globalAlpha=.13;ctx.beginPath();
-  const coords=[[-175,-92],[-125,-93],[-137,-142],[-63,-111],[-36,-149],[6,-116],[62,-144],[69,-103],[145,-130],[132,-79],[198,-64],[166,-13],[207,27],[159,52],[175,111],[99,104],[88,149],[28,120],[-18,151],[-50,119],[-124,143],[-115,96],[-190,97],[-163,43],[-207,19],[-171,-25],[-201,-65]];
-  coords.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fill();ctx.restore();
-  textBlock(ctx,c,{width:330,height:158,y:c.subtext?-8:0,size:89});
-  caption(ctx,c,108,320);
-  ctx.lineWidth=4;strokeLine(ctx,-175,-105,-190,-119,4);strokeLine(ctx,171,88,189,105,4);star(ctx,166,-104,11);
+  // An evenly spaced 20-point burst has a predictable inner envelope. Its
+  // central text rectangles are inset from even the shortest inward valleys.
+  ctx.beginPath();
+  for (let i = 0; i < 40; i++) {
+    const angle = i * Math.PI / 20 - Math.PI / 2;
+    const rx = i % 2 ? 188 : 205, ry = i % 2 ? 137 : 150;
+    const x = Math.cos(angle) * rx, y = Math.sin(angle) * ry;
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  }
+  ctx.closePath();
+  ctx.save(); ctx.globalAlpha = .11; ctx.fill(); ctx.restore();
+  ctx.save(); ctx.globalAlpha = .7; ctx.lineWidth = 2.5; ctx.stroke(); ctx.restore();
+  // Keep both sparks entirely outside the burst instead of crossing its rim.
+  star(ctx,-223,0,5); star(ctx,223,0,5);
+  // Main: x ±145, y -71..37. Caption: x ±112, y 77..99.
+  fittedText(ctx,c,{width:290,height:108,y:-17,size:89});
+  ctx.save(); ctx.globalAlpha = .5; strokeLine(ctx,-28,59,28,59,2); ctx.restore();
+  fittedCaption(ctx,c,{width:224,height:22,y:88});
 }
+
 const drawers={outline:drawOutline,solid:drawSolid,badge:drawBadge,terminal:drawTerminal,pixel:drawPixel,hand:drawHand,circle:drawCircle,impact:drawImpact};
 
 /** The preview and exported PNG use this exact renderer. Dimensions are square pixels. */

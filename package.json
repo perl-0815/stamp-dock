@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/serve.mjs",
-    "check": "node --check dist/assets/app.js && node --check dist/assets/render.js && node --check dist/assets/templates.js",
+    "check": "node --check dist/assets/app.js && node --check dist/assets/render.js && node --check dist/assets/templates.js && node --check dist/assets/packs.js && node --check dist/assets/archive.js",
     "test": "playwright test"
   },
   "devDependencies": {

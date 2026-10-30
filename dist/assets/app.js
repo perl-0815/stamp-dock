@@ -1,5 +1,7 @@
 import { CATEGORIES, STYLES, PALETTE, TEMPLATES } from './templates.js';
 import { renderStamp, createStampBlob } from './render.js';
+import { PACKS, packStamps } from './packs.js';
+import { createPackArchive } from './archive.js';
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -25,6 +27,7 @@ const paths = {
   x: '<path d="m6 6 12 12M6 18 18 6"/>',
   rotate: '<path d="M3 10a9 9 0 1 1 2 8M3 3v7h7"/>',
   shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>',
+  package: '<path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm-9 5 9 5 9-5M12 12v10M7 4.8l9 5"/>',
 };
 function icon(name) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.grid}</svg>`;
@@ -62,6 +65,8 @@ let resolution = 512;
 let config = { ...DEFAULT };
 let editingId = null;
 let detailId = null;
+let packJob = null;
+let packsRendered = false;
 let toastTimer;
 let renderErrorShown = false;
 const categoryIcons = { all: 'grid', review: 'check', status: 'status', reaction: 'smile', communication: 'message', dev: 'code', fun: 'coffee' };
@@ -83,7 +88,7 @@ function sidebarButton(id, label, symbol, count, active) {
 }
 function renderNav() {
   const focusedFilter = document.activeElement?.dataset.filter;
-  $('#main-filter').innerHTML = sidebarButton('all', 'すべてのスタンプ', 'grid', TEMPLATES.length, view === 'library' && category === 'all');
+  $('#main-filter').innerHTML = sidebarButton('all', 'すべてのスタンプ', 'grid', TEMPLATES.length, view === 'library' && category === 'all') + sidebarButton('packs', 'スタンプパック', 'package', PACKS.length, view === 'packs');
   $('#category-nav').innerHTML = CATEGORIES.filter(c => c.id !== 'all').map(c => sidebarButton(c.id, c.label, categoryIcons[c.id], TEMPLATES.filter(s => s.category === c.id).length, view === 'library' && category === c.id)).join('');
   $('#personal-nav').innerHTML = sidebarButton('favorites', 'お気に入り', 'heart', favorites.size, view === 'favorites') + sidebarButton('mine', 'マイスタンプ', 'bookmark', customStamps.length, view === 'mine');
   hydrateIcons($('.sidebar'));
@@ -123,10 +128,11 @@ function renderGrid() {
 function switchView(next, scroll = true) {
   view = next;
   pageSize = 24;
-  $('#library-view').hidden = view === 'editor';
+  $('#library-view').hidden = view === 'editor' || view === 'packs';
   $('#editor-view').hidden = view !== 'editor';
+  $('#packs-view').hidden = view !== 'packs';
   renderNav();
-  if (view === 'editor') syncEditor(); else renderGrid();
+  if (view === 'editor') syncEditor(); else if (view === 'packs') renderPacks(); else renderGrid();
   if (scroll) window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function clearFilters() {
@@ -147,6 +153,66 @@ function setResolution(value) {
   $$('.resolution-select').forEach(el => { el.value = String(resolution); });
   $('#preview-dimensions').textContent = `${resolution} × ${resolution} px`;
   if (view !== 'editor') $$('.card-download').forEach(button => { const s = findStamp(button.dataset.download); button.setAttribute('aria-label', `${s?.name}を${resolution}pxのPNGでダウンロード`); });
+  $$('.pack-download-size').forEach(el => { el.textContent = `${resolution} px / PNG`; });
+}
+
+function renderPacks() {
+  if (packsRendered) return;
+  packsRendered = true;
+  $('#pack-grid').innerHTML = PACKS.map((pack, index) => `<article class="pack-card" style="--pack-color:${pack.color}"><button class="pack-art" data-pack-detail="${pack.id}" aria-label="${pack.name}パックの16個を見る"><span class="pack-number">PACK ${String(index + 1).padStart(2, '0')}</span><div class="pack-stamp-strip">${packStamps(pack).slice(0, 4).map(() => '<canvas width="240" height="240" aria-hidden="true"></canvas>').join('')}</div><span class="pack-art-caption">${pack.tagline}</span><span class="pack-seal">16<br><small>STAMPS</small></span></button><div class="pack-card-info"><div class="pack-card-title"><h3>${pack.name}</h3><span class="pack-download-size">${resolution} px / PNG</span></div><p>${pack.description}</p><div class="pack-card-actions"><button class="text-link" data-pack-detail="${pack.id}">中身を見る ${icon('arrow-right')}</button><button class="button button-dark" data-pack-download="${pack.id}">${icon('download')}ZIPで保存</button></div></div></article>`).join('');
+  $$('.pack-card').forEach((card, index) => $$('canvas', card).forEach((canvas, stampIndex) => draw(canvas, packStamps(PACKS[index])[stampIndex], 240)));
+  updatePackBusy();
+}
+function openPackDetail(id) {
+  const pack = PACKS.find(p => p.id === id); if (!pack) return;
+  $('#pack-dialog-title').textContent = `${pack.name}パック`;
+  $('#pack-dialog-description').textContent = pack.description;
+  const stamps = packStamps(pack);
+  $('#pack-contents').innerHTML = stamps.map(stamp => `<div class="pack-content-item"><canvas width="240" height="240" aria-hidden="true"></canvas><span>${escapeHTML(stamp.name)}</span></div>`).join('');
+  $$('#pack-contents canvas').forEach((canvas, index) => draw(canvas, stamps[index], 240));
+  $('#pack-dialog-download').dataset.packDownload = pack.id;
+  updatePackBusy();
+  $('#pack-dialog').showModal();
+}
+function updatePackBusy() {
+  $$('[data-pack-download]').forEach(button => { button.disabled = Boolean(packJob); button.setAttribute('aria-busy', String(Boolean(packJob) && button.dataset.packDownload === packJob.id)); });
+}
+function saveBlob(blob, filename) {
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.href = url; link.download = filename;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+async function downloadPack(id) {
+  if (packJob) return;
+  const pack = PACKS.find(p => p.id === id); if (!pack) return;
+  const size = resolution;
+  const controller = new AbortController();
+  packJob = { id, controller };
+  if ($('#pack-dialog').open) $('#pack-dialog').close();
+  switchView('packs', false);
+  $('#pack-progress').hidden = false;
+  $('#pack-progress-bar').value = 0;
+  $('#pack-progress-message').textContent = `${pack.name}を${size}pxで作成中… 0 / ${pack.ids.length}`;
+  $('#cancel-pack').disabled = false;
+  $('#cancel-pack').textContent = 'キャンセル';
+  $('#pack-progress').scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  $('#cancel-pack').focus({ preventScroll: true });
+  updatePackBusy();
+  try {
+    const blob = await createPackArchive(pack, size, { signal: controller.signal, onProgress(done, total) { $('#pack-progress-bar').value = done; $('#pack-progress-message').textContent = `${pack.name}を${size}pxで作成中… ${done} / ${total}`; } });
+    controller.signal.throwIfAborted();
+    saveBlob(blob, `stampdock-${pack.id}-${size}px.zip`);
+    toast(`${pack.name}の${pack.ids.length}個を${size}pxのZIPにまとめました。`);
+  } catch (error) {
+    if (error.name === 'AbortError') toast('パックの作成をキャンセルしました。');
+    else { console.error(error); toast('パックを作成できませんでした。もう一度ダウンロードしてください。', true); }
+  } finally {
+    const restoreFocus = document.activeElement === $('#cancel-pack');
+    packJob = null; $('#pack-progress').hidden = true; updatePackBusy();
+    if (restoreFocus) $(`[data-pack-download="${id}"]`)?.focus();
+  }
 }
 async function downloadStamp(stamp, button) {
   if (!stamp?.text.trim() || button?.disabled) return;
@@ -154,12 +220,8 @@ async function downloadStamp(stamp, button) {
   if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
   try {
     const blob = await createStampBlob({ ...stamp }, size);
-    const link = document.createElement('a');
     const filename = stamp.text.trim().replace(/[\s\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/-+/g, '-').slice(0, 50) || 'stamp';
-    const url = URL.createObjectURL(blob);
-    link.href = url; link.download = `stampdock-${filename}-${size}px.png`;
-    document.body.append(link); link.click(); link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    saveBlob(blob, `stampdock-${filename}-${size}px.png`);
     toast(`${size} × ${size} pxのPNGを書き出しました。`);
   } catch (error) { console.error(error); toast('画像を書き出せませんでした。もう一度お試しください。', true); }
   finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); } updateEditorValidity(); }
@@ -252,7 +314,7 @@ $$('[data-nav]').forEach(el => el.addEventListener('click', () => { if (el.datas
 $('.sidebar').addEventListener('click', event => {
   const button = event.target.closest('[data-filter]'); if (!button) return;
   const filter = button.dataset.filter;
-  if (['favorites', 'mine'].includes(filter)) { query = ''; $('#search').value = ''; switchView(filter); }
+  if (['favorites', 'mine', 'packs'].includes(filter)) { query = ''; $('#search').value = ''; switchView(filter); }
   else { category = filter; switchView('library', view === 'editor'); }
 });
 $('#hero-create').addEventListener('click', newStamp);
@@ -260,6 +322,8 @@ $('#search').addEventListener('input', event => { query = event.target.value; pa
 $('#sort').addEventListener('change', event => { sort = event.target.value; renderGrid(); });
 $$('.resolution-select').forEach(el => el.addEventListener('change', event => setResolution(event.target.value)));
 $('#load-more').addEventListener('click', () => { pageSize += 24; renderGrid(); const firstNew = $$('.card-preview')[pageSize - 24]; firstNew?.focus({ preventScroll: true }); });
+document.addEventListener('click', event => { const detail = event.target.closest('[data-pack-detail]'); if (detail) openPackDetail(detail.dataset.packDetail); const download = event.target.closest('[data-pack-download]'); if (download) downloadPack(download.dataset.packDownload); });
+$('#cancel-pack').addEventListener('click', () => { packJob?.controller.abort(); $('#cancel-pack').textContent = '中止しています…'; });
 $('#empty-action').addEventListener('click', () => { if (view === 'mine' && !query) newStamp(); else { clearFilters(); switchView('library', false); $('#search').focus(); } });
 $('#stamp-grid').addEventListener('click', event => {
   const favorite = event.target.closest('[data-favorite]'); if (favorite) { toggleFavorite(favorite.dataset.favorite, true); return; }
@@ -295,4 +359,4 @@ $('#about-button').addEventListener('click', () => $('#about-dialog').showModal(
 $('#footer-about').addEventListener('click', () => $('#about-dialog').showModal());
 $$('.close-dialog').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
 $$('dialog').forEach(dialog => dialog.addEventListener('click', event => { const rect = dialog.getBoundingClientRect(); if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close(); }));
-document.addEventListener('keydown', event => { if (event.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector('dialog[open]') && view !== 'editor') { event.preventDefault(); $('#search').focus(); } });
+document.addEventListener('keydown', event => { if (event.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector('dialog[open]') && !['editor', 'packs'].includes(view)) { event.preventDefault(); $('#search').focus(); } });
