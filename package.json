@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 5217",
     "build": "next build",
+    "assets:generate": "node scripts/generate-brand-assets.mjs",
     "start": "node scripts/serve.mjs",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && node --check public/assets/render.js && node --check public/assets/templates.js && node --check public/assets/packs.js && node --check public/assets/archive.js",

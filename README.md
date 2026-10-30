@@ -85,6 +85,20 @@ tests/                    ブラウザによる操作・画像検証
 
 フォントはM PLUS Rounded 1c 700とDela Gothic One 400を同梱し、外部のフォント配信に依存しません。明朝体は端末の書体を使用します。
 
+## 共有画像とアイコン
+
+公開URLは`https://stamp-dock.kozyutu.work/`を基準にし、`src/app/layout.tsx`でcanonical、Open Graph、Twitter Cardを設定しています。共有画像は`public/og-image.png`（1200×630px）です。画像の絶対URLと代替テキストは、JavaScriptを実行しないリンクプレビュー用クローラーにも初期HTMLで渡します。
+
+ブラウザ用は`src/app/favicon.ico`（16・32・48px）と`src/app/icon.svg`、iPhoneなどのホーム画面用は`src/app/apple-icon.png`（180px）を使います。Next.jsのファイル規約からアイコンの`link`タグを生成します。
+
+画像を作り直す場合だけ、Chromiumが利用できる開発環境で次を実行してください。
+
+```sh
+npm run assets:generate
+```
+
+実際のスタンプ描画と同梱フォントから画像を生成します。生成した画像はソースに含めるため、通常のビルドや配信にChromiumは不要です。公開ドメインを変える場合は、`layout.tsx`の`metadataBase`も更新してください。
+
 ## 検証
 
 ```sh
