@@ -1,0 +1,14 @@
+{
+  "name": "stampdock",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "check": "node --check dist/assets/app.js && node --check dist/assets/render.js && node --check dist/assets/templates.js",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
