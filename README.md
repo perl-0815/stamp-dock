@@ -4,7 +4,26 @@
 
 ## 起動
 
-Node.js 22以降が必要です。
+Node.js **26系のLTS**を使います。ローカルの確認済みバージョンは**26.13.0**です。
+
+| 設定 | バージョン |
+| --- | --- |
+| ローカルの基準（`.nvmrc` / `.node-version`） | `26.13.0` |
+| `package.json`の`engines.node` | `26.x` |
+| VercelのNode.js Version | `26.x` |
+
+現在のMacはHomebrewのNodeを使用しています。更新・確認は次の手順です。
+
+```sh
+brew update
+brew upgrade node
+node --version # このプロジェクトではv26系であることを確認
+npm --version
+```
+
+新しく環境を用意する場合は、`.nvmrc`または`.node-version`に対応するバージョン管理ツールで26.13.0を選択してください。nvmを使用している場合は、プロジェクト内で`nvm install`、`nvm use`を実行します。Homebrewの`node`が将来別のメジャーへ更新された場合も、プロジェクトの指定を優先します。
+
+Nodeを切り替えた後に依存関係を入れ直して起動します。
 
 ```sh
 npm ci
@@ -20,6 +39,8 @@ npm start      # out/をローカルで確認（同じポート）
 ```
 
 `next.config.ts`で`output: 'export'`を設定しています。配信対象は`out/`で、VercelなどのNext.js対応ホスティングでも、静的ファイルを配信できる環境でも配置できます。`npm start`は静的出力を確認するサーバーです。`PORT=5220 npm start`でプレビューのポートを変更できます。
+
+VercelではSettings → Build and Deployment → Node.js Versionを`26.x`に揃えます。`engines.node`も`26.x`として、将来のメジャー更新を自動で選択させない設定です。Vercel側のマイナー・パッチ版はプラットフォームが更新するため、ローカルの26.13.0と完全一致するとは限りません。[VercelのNode.jsバージョン指定](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions)
 
 ## 機能
 
