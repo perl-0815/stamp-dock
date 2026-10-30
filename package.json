@@ -4,11 +4,25 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/serve.mjs",
-    "check": "node --check dist/assets/app.js && node --check dist/assets/render.js && node --check dist/assets/templates.js && node --check dist/assets/packs.js && node --check dist/assets/archive.js",
-    "test": "playwright test"
+    "dev": "next dev --hostname 127.0.0.1 --port 5217",
+    "build": "next build",
+    "start": "node scripts/serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && node --check public/assets/render.js && node --check public/assets/templates.js && node --check public/assets/packs.js && node --check public/assets/archive.js",
+    "test": "playwright test",
+    "test:production": "STAMPDOCK_TEST_PRODUCTION=1 playwright test"
+  },
+  "dependencies": {
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0"
-  }
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "~5.9.3"
+  },
+  "engines": { "node": ">=22" }
 }

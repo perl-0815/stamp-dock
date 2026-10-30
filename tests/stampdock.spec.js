@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 
-test.beforeEach(async ({ page }) => { await page.goto('/'); await expect(page.locator('.stamp-card')).toHaveCount(24); });
+test.beforeEach(async ({ page }) => { await page.goto('/'); await expect(page.locator('#main-content')).toHaveAttribute('data-ready', 'true'); await expect(page.locator('.stamp-card')).toHaveCount(24); });
 
 test('128 templates, categories, normalized search, empty state, and pagination', async ({ page }) => {
   await expect(page.locator('#total-count')).toHaveText('128');

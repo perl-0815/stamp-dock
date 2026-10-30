@@ -1,16 +1,25 @@
 # STAMPDOCK
 
-エンジニアのためのスタンプ工房。128種類のテンプレートの検索、編集、自作、PNGダウンロードに対応する個人用の静的サイトです。
+エンジニアのためのスタンプ工房。Next.js 16 / App Router / React 19 / TypeScriptで作成しています。128種類のテンプレートの検索、編集、自作、PNG・ZIPダウンロードに対応します。
 
 ## 起動
 
-Node.js 20以降で、依存パッケージを入れずに起動できます。
+Node.js 22以降が必要です。
 
 ```sh
-node scripts/serve.mjs
+npm ci
+npm run dev
 ```
 
-http://127.0.0.1:5217 を開いてください。`PORT=5220 node scripts/serve.mjs` でポートを変更できます。
+http://127.0.0.1:5217 を開いてください。
+
+```sh
+npm run check  # TypeScriptと描画エンジンの構文確認
+npm run build  # Next.jsの本番ビルド。out/へ静的出力
+npm start      # out/をローカルで確認（同じポート）
+```
+
+`next.config.ts`で`output: 'export'`を設定しています。配信対象は`out/`で、VercelなどのNext.js対応ホスティングでも、静的ファイルを配信できる環境でも配置できます。`npm start`は静的出力を確認するサーバーです。`PORT=5220 npm start`でプレビューのポートを変更できます。
 
 ## 機能
 
@@ -31,21 +40,29 @@ http://127.0.0.1:5217 を開いてください。`PORT=5220 node scripts/serve.m
 ## 構成
 
 ```text
-dist/index.html          画面・ダイアログ
-dist/assets/app.js       検索・編集・保存・ダウンロード
-dist/assets/render.js    フォント読込・共通Canvas描画・PNG生成
-dist/assets/templates.js テンプレート・カテゴリ・スタイル
-dist/assets/packs.js     用途別パックの構成
-dist/assets/archive.js   PNGの一括生成・ZIP作成
-dist/assets/styles.css   レスポンシブUI
-dist/assets/fonts/       同梱フォント
-dist/assets/licenses/    フォントライセンス
-scripts/serve.mjs        ローカル用静的サーバー
-tests/                   ブラウザによる操作・画像検証
-.openai/hosting.json     SitesのプロジェクトIDと静的配信設定
+src/app/                  App Routerのページ・レイアウト・CSS
+src/components/StampApp    検索・保存・ダウンロードのReact状態管理
+src/components/StampLibrary / StampPacks / StampEditor
+                          各画面の制御コンポーネント
+src/components/StampCanvas / StampDialogs
+                          Canvasのライフサイクル・ダイアログ
+src/lib/                  型定義・既存の保存データとの互換処理
+public/assets/render.js    共通Canvas描画・PNG生成
+public/assets/templates.js テンプレート・カテゴリ・スタイル
+public/assets/packs.js     用途別パックの構成
+public/assets/archive.js   PNGの一括生成・ZIP作成
+public/assets/fonts/       同梱フォント
+public/assets/licenses/    フォントライセンス
+scripts/serve.mjs          本番静的出力を確認するサーバー
+tests/                    ブラウザによる操作・画像検証
+.openai/hosting.json       SitesのプロジェクトIDと静的配信設定
 ```
 
-配信対象は`dist/`です。ビルドは不要で、実行時の依存パッケージもありません。フォントはM PLUS Rounded 1c 700とDela Gothic One 400を同梱し、外部のフォント配信に依存しません。明朝体は端末の書体を使用します。
+画面とイベントはReactが管理し、Canvasの描画はClient ComponentのEffect内で実行します。旧HTMLやDOMを直接書き換えるアプリは使用していません。描画・PNG・ZIP生成は移行前と同じエンジンを使い、共有モジュールにはTypeScriptの型定義を付けています。
+
+お気に入りとマイスタンプは従来の`stampdock-favorites-v1` / `stampdock-custom-v1`をそのまま読み書きします。同じURL・ブラウザで利用すれば、移行前のデータを引き継げます。
+
+フォントはM PLUS Rounded 1c 700とDela Gothic One 400を同梱し、外部のフォント配信に依存しません。明朝体は端末の書体を使用します。
 
 ## 検証
 
@@ -54,10 +71,16 @@ npm ci
 npx playwright install chromium # 初回のみ
 npm run check
 npm test
+npm run build
+npm run test:production
 ```
 
 テストは独立したブラウザコンテキストで実行します。検索、カテゴリ、ページ追加、お気に入りの永続化、実ファイルのダウンロード、5解像度・透過・背景、8種類のテンプレート編集時の画像一致、自作の保存・更新・削除、空入力、キーボード、破損データ、320〜1440px幅、アセットの読込を検証します。
 
+開発サーバーを停止してから`test:production`を実行すると、Next.jsが出力した`out/`を配信して同じテストを行います。移行用のテストでは、初期HTMLがNext.jsから生成されていること、旧データの読み込み・更新、編集途中の移動と最新プレビューのPNG保存も確認します。
+
 パックのテストではPython 3の標準`zipfile`で、実際のZIPダウンロードを展開してCRC、全16枚のPNG、解像度、一覧の内容を確認します。128pxで全6パックと、2048pxでスタンダードパックを検証し、生成のキャンセル・失敗・再試行、途中で解像度を変更したときの挙動も確認します。
 
 ローカルのChromiumで確認済み。Safariは初期画面の描画を目視確認済み。Safariでの全操作、Firefox、実機タッチや保存先ダイアログは未検証です。
+
+構成の参照：[Next.jsの静的出力](https://nextjs.org/docs/app/guides/static-exports)、[Server / Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components)。

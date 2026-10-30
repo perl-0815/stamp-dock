@@ -18,7 +18,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 `, path], { encoding: 'utf8' }));
 }
 
-test.beforeEach(async ({ page }) => { await page.goto('/'); await page.locator('[data-filter="packs"]').click(); });
+test.beforeEach(async ({ page }) => { await page.goto('/'); await expect(page.locator('#main-content')).toHaveAttribute('data-ready', 'true'); await page.locator('[data-filter="packs"]').click(); });
 
 test('six curated packs have valid unique stamps and can be previewed', async ({ page }) => {
   await expect(page.locator('.pack-card')).toHaveCount(6);
